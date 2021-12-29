@@ -16,4 +16,5 @@ async = ["embassy-traits"]
 
 [dependencies]
 embedded-hal = "0.2.3"
-embassy-traits = { version = "0.0.2", optional = true }
+embassy-traits = { version = "0.1.0", path = "../embassy/embassy-traits", optional = true }
+defmt = "0.3.0"
