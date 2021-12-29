@@ -36,10 +36,12 @@ impl<I2C: I2c, D: Delay> I2CBus<I2C, D> {
 
         let _ = self
             .i2c_bus
-            .write(self.address, &[byte, byte | ENABLE])
+            // using the same hack as arduino lib (https://github.com/duinoWitchery/hd44780/):
+            // > Cheat here by raising E at the same time as setting control lines
+	        // > This violates the spec but seems to work realiably.
+
+            .write(self.address, &[/*byte, */byte | ENABLE, byte])
             .await;
-        self.delay.delay_ms(2u8 as u64).await;
-        let _ = self.i2c_bus.write(self.address, &[byte]).await;
     }
 }
 
