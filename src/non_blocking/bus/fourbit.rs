@@ -12,6 +12,7 @@ pub struct FourBitBus<
     D5: OutputPin,
     D6: OutputPin,
     D7: OutputPin,
+    D: Delay,
 > {
     rs: RS,
     en: EN,
@@ -19,10 +20,18 @@ pub struct FourBitBus<
     d5: D5,
     d6: D6,
     d7: D7,
+    delay: D,
 }
 
-impl<RS: OutputPin, EN: OutputPin, D4: OutputPin, D5: OutputPin, D6: OutputPin, D7: OutputPin>
-    FourBitBus<RS, EN, D4, D5, D6, D7>
+impl<
+        RS: OutputPin,
+        EN: OutputPin,
+        D4: OutputPin,
+        D5: OutputPin,
+        D6: OutputPin,
+        D7: OutputPin,
+        D: Delay,
+    > FourBitBus<RS, EN, D4, D5, D6, D7, D>
 {
     pub fn from_pins(
         rs: RS,
@@ -31,7 +40,8 @@ impl<RS: OutputPin, EN: OutputPin, D4: OutputPin, D5: OutputPin, D6: OutputPin, 
         d5: D5,
         d6: D6,
         d7: D7,
-    ) -> FourBitBus<RS, EN, D4, D5, D6, D7> {
+        delay: D,
+    ) -> FourBitBus<RS, EN, D4, D5, D6, D7, D> {
         FourBitBus {
             rs,
             en,
@@ -39,6 +49,7 @@ impl<RS: OutputPin, EN: OutputPin, D4: OutputPin, D5: OutputPin, D6: OutputPin, 
             d5,
             d6,
             d7,
+            delay,
         }
     }
 
@@ -115,16 +126,41 @@ impl<
         D5: OutputPin + 'static,
         D6: OutputPin + 'static,
         D7: OutputPin + 'static,
-    > DataBus for FourBitBus<RS, EN, D4, D5, D6, D7>
+        D: Delay,
+    > Delay for FourBitBus<RS, EN, D4, D5, D6, D7, D>
 {
-    type WriteFuture<'a, D: 'a> = impl Future<Output = Result<()>> + 'a;
+    type DelayFuture<'a>
+    where
+        D: 'a,
+    = impl Future<Output = ()> + 'a;
 
-    fn write<'a, D: Delay + 'a>(
-        &'a mut self,
-        byte: u8,
-        data: bool,
-        mut delay: &'a mut D,
-    ) -> Self::WriteFuture<'a, D> {
+    /// Future that completes after now + millis
+    fn delay_ms(&mut self, millis: u64) -> Self::DelayFuture<'_> {
+        self.delay.delay_ms(millis)
+    }
+
+    /// Future that completes after now + micros
+    fn delay_us(&mut self, micros: u64) -> Self::DelayFuture<'_> {
+        self.delay.delay_us(micros)
+    }
+}
+
+impl<
+        RS: OutputPin + 'static,
+        EN: OutputPin + 'static,
+        D4: OutputPin + 'static,
+        D5: OutputPin + 'static,
+        D6: OutputPin + 'static,
+        D7: OutputPin + 'static,
+        D: Delay,
+    > DataBus for FourBitBus<RS, EN, D4, D5, D6, D7, D>
+{
+    type WriteFuture<'a>
+    where
+        D: 'a,
+    = impl Future<Output = Result<()>> + 'a;
+
+    fn write<'a>(&'a mut self, byte: u8, data: bool) -> Self::WriteFuture<'a> {
         async move {
             if data {
                 self.rs.set_high().map_err(|_| Error)?;
@@ -134,12 +170,12 @@ impl<
             self.write_upper_nibble(byte)?;
             // Pulse the enable pin to recieve the upper nibble
             self.en.set_high().map_err(|_| Error)?;
-            delay.delay_ms(2u8 as u64).await;
+            self.delay.delay_ms(2u8 as u64).await;
             self.en.set_low().map_err(|_| Error)?;
             self.write_lower_nibble(byte)?;
             // Pulse the enable pin to recieve the lower nibble
             self.en.set_high().map_err(|_| Error)?;
-            delay.delay_ms(2u8 as u64).await;
+            self.delay.delay_ms(2u8 as u64).await;
             self.en.set_low().map_err(|_| Error)?;
             if data {
                 self.rs.set_low().map_err(|_| Error)?;

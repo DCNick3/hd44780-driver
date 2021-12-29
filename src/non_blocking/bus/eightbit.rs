@@ -1,5 +1,4 @@
 use core::future::Future;
-use core::pin::Pin;
 use embassy_traits::delay::Delay;
 use embedded_hal::digital::v2::OutputPin;
 
@@ -19,6 +18,7 @@ pub struct EightBitBus<
     D5: OutputPin,
     D6: OutputPin,
     D7: OutputPin,
+    D: Delay,
 > {
     rs: RS,
     en: EN,
@@ -30,6 +30,7 @@ pub struct EightBitBus<
     d5: D5,
     d6: D6,
     d7: D7,
+    delay: D,
 }
 
 impl<
@@ -43,7 +44,8 @@ impl<
         D5: OutputPin,
         D6: OutputPin,
         D7: OutputPin,
-    > EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7>
+        D: Delay,
+    > EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7, D>
 {
     pub fn from_pins(
         rs: RS,
@@ -56,7 +58,8 @@ impl<
         d5: D5,
         d6: D6,
         d7: D7,
-    ) -> EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7> {
+        delay: D,
+    ) -> EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7, D> {
         EightBitBus {
             rs,
             en,
@@ -68,6 +71,7 @@ impl<
             d5,
             d6,
             d7,
+            delay,
         }
     }
 
@@ -144,16 +148,45 @@ impl<
         D5: OutputPin + 'static,
         D6: OutputPin + 'static,
         D7: OutputPin + 'static,
-    > DataBus for EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7>
+        D: Delay,
+    > Delay for EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7, D>
 {
-    type WriteFuture<'a, D: 'a> = impl Future<Output = Result<()>> + 'a;
+    type DelayFuture<'a>
+    where
+        D: 'a,
+    = impl Future<Output = ()> + 'a;
 
-    fn write<'a, D: Delay + 'a>(
-        &'a mut self,
-        byte: u8,
-        data: bool,
-        delay: &'a mut D,
-    ) -> Self::WriteFuture<'a, D> {
+    /// Future that completes after now + millis
+    fn delay_ms(&mut self, millis: u64) -> Self::DelayFuture<'_> {
+        self.delay.delay_ms(millis)
+    }
+
+    /// Future that completes after now + micros
+    fn delay_us(&mut self, micros: u64) -> Self::DelayFuture<'_> {
+        self.delay.delay_us(micros)
+    }
+}
+
+impl<
+        RS: OutputPin + 'static,
+        EN: OutputPin + 'static,
+        D0: OutputPin + 'static,
+        D1: OutputPin + 'static,
+        D2: OutputPin + 'static,
+        D3: OutputPin + 'static,
+        D4: OutputPin + 'static,
+        D5: OutputPin + 'static,
+        D6: OutputPin + 'static,
+        D7: OutputPin + 'static,
+        D: Delay,
+    > DataBus for EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7, D>
+{
+    type WriteFuture<'a>
+    where
+        D: 'a,
+    = impl Future<Output = Result<()>> + 'a;
+
+    fn write<'a>(&'a mut self, byte: u8, data: bool) -> Self::WriteFuture<'a> {
         async move {
             if data {
                 self.rs.set_high().map_err(|_| Error)?;
@@ -162,7 +195,7 @@ impl<
             }
             self.set_bus_bits(byte)?;
             self.en.set_high().map_err(|_| Error)?;
-            delay.delay_ms(2u8 as u64).await;
+            self.delay.delay_ms(2u8 as u64).await;
             self.en.set_low().map_err(|_| Error)?;
             if data {
                 self.rs.set_low().map_err(|_| Error)?;
