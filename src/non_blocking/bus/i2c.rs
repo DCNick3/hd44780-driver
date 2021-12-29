@@ -40,8 +40,15 @@ impl<I2C: I2c, D: Delay> I2CBus<I2C, D> {
             // > Cheat here by raising E at the same time as setting control lines
 	        // > This violates the spec but seems to work realiably.
 
-            .write(self.address, &[/*byte, */byte | ENABLE, byte])
+            .write(self.address, &[byte | ENABLE, byte])
             .await;
+        
+        self.delay.delay_ms(1u8 as u64).await;
+
+        // let _ = self
+        //     .i2c_bus
+        //     .write(self.address, &[byte])
+        //     .await;
     }
 }
 
@@ -70,11 +77,30 @@ impl<I2C: I2c + 'static, D: Delay> DataBus for I2CBus<I2C, D> {
 
     fn write<'a>(&'a mut self, byte: u8, data: bool) -> Self::WriteFuture<'a> {
         async move {
-            let upper_nibble = byte & 0xF0;
-            self.write_nibble(upper_nibble, data).await;
+            let rs = match data {
+                false => 0u8,
+                true => REGISTER_SELECT,
+            };
+            
+            let write_chain = [
+                // using the same hack as arduino lib (https://github.com/duinoWitchery/hd44780/):
+                // > Cheat here by raising E at the same time as setting control lines
+                // > This violates the spec but seems to work realiably.
+                // also we send both nibbles in one i2c transaction (it's nice =))
+                // I think using DMA we can actually offload even more work off cpu sacrificing memory usage
+                // but no DMA yet + will need to change the library structure... Uncool
+                rs | BACKLIGHT | (byte & 0xF0)        | ENABLE, 
+                rs | BACKLIGHT | (byte & 0xF0),
 
-            let lower_nibble = (byte & 0x0F) << 4;
-            self.write_nibble(lower_nibble, data).await;
+                rs | BACKLIGHT | ((byte & 0x0F) << 4) | ENABLE, 
+                rs | BACKLIGHT | ((byte & 0x0F) << 4),
+            ];
+
+
+            let _ = self
+                .i2c_bus
+                    .write(self.address, &write_chain)
+                    .await;
 
             Ok(())
         }

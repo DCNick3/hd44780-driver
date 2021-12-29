@@ -350,35 +350,35 @@ where
         self.bus.write(0x32, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.bus.delay_ms(5u8 as u64).await;
 
         self.bus.write(0x28, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.bus.delay_ms(5u8 as u64).await;
 
         // Clear Display
         self.bus.write(0x0E, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.bus.delay_ms(5u8 as u64).await;
 
         // Move the cursor to beginning of first line
         self.bus.write(0x01, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.bus.delay_ms(5u8 as u64).await;
 
         // Set entry mode
         self.bus.write(self.entry_mode.as_byte(), false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.bus.delay_ms(5u8 as u64).await;
 
         self.bus.write(0x80, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.bus.delay_ms(5u8 as u64).await;
 
         Ok(())
     }
