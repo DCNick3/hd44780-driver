@@ -76,6 +76,9 @@ impl<I2C: I2c + 'static, D: Delay> DataBus for I2CBus<I2C, D> {
                     .write(self.address, &write_chain)
                     .await;
 
+            // TODO: display stopped working w/o this... Maybe we want to pack everything into one chunky transaction
+            self.delay.delay_ms(1).await;
+
             Ok(())
         }
     }
