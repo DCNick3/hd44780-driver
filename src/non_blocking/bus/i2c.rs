@@ -24,32 +24,6 @@ impl<I2C: I2c, D: Delay> I2CBus<I2C, D> {
             delay,
         }
     }
-
-    /// Write a nibble to the lcd
-    /// The nibble should be in the upper part of the byte
-    async fn write_nibble<'a>(&mut self, nibble: u8, data: bool) {
-        let rs = match data {
-            false => 0u8,
-            true => REGISTER_SELECT,
-        };
-        let byte = nibble | rs | BACKLIGHT;
-
-        let _ = self
-            .i2c_bus
-            // using the same hack as arduino lib (https://github.com/duinoWitchery/hd44780/):
-            // > Cheat here by raising E at the same time as setting control lines
-	        // > This violates the spec but seems to work realiably.
-
-            .write(self.address, &[byte | ENABLE, byte])
-            .await;
-        
-        self.delay.delay_ms(1u8 as u64).await;
-
-        // let _ = self
-        //     .i2c_bus
-        //     .write(self.address, &[byte])
-        //     .await;
-    }
 }
 
 impl<I2C: I2c + 'static, D: Delay> Delay for I2CBus<I2C, D> {
