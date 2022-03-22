@@ -1,11 +1,11 @@
 use core::future::Future;
-use embassy_traits::delay::Delay;
-use embassy_traits::i2c::I2c;
+use embedded_hal_async::delay::DelayUs;
+use embedded_hal_async::i2c::I2c;
 
 use crate::error::Result;
 use crate::non_blocking::bus::DataBus;
 
-pub struct I2CBus<I2C: I2c, D: Delay> {
+pub struct I2CBus<I2C: I2c, D: DelayUs> {
     i2c_bus: I2C,
     address: u8,
     delay: D,
@@ -16,7 +16,7 @@ const ENABLE: u8 = 0b0000_0100;
 // const READ_WRITE: u8 = 0b0000_0010; // Not used as no reading of the `HD44780` is done
 const REGISTER_SELECT: u8 = 0b0000_0001;
 
-impl<I2C: I2c, D: Delay> I2CBus<I2C, D> {
+impl<I2C: I2c, D: DelayUs> I2CBus<I2C, D> {
     pub fn new(i2c_bus: I2C, address: u8, delay: D) -> I2CBus<I2C, D> {
         I2CBus {
             i2c_bus,
@@ -26,24 +26,7 @@ impl<I2C: I2c, D: Delay> I2CBus<I2C, D> {
     }
 }
 
-impl<I2C: I2c + 'static, D: Delay> Delay for I2CBus<I2C, D> {
-    type DelayFuture<'a>
-    where
-        D: 'a,
-    = impl Future<Output = ()> + 'a;
-
-    /// Future that completes after now + millis
-    fn delay_ms(&mut self, millis: u64) -> Self::DelayFuture<'_> {
-        self.delay.delay_ms(millis)
-    }
-
-    /// Future that completes after now + micros
-    fn delay_us(&mut self, micros: u64) -> Self::DelayFuture<'_> {
-        self.delay.delay_us(micros)
-    }
-}
-
-impl<I2C: I2c + 'static, D: Delay> DataBus for I2CBus<I2C, D> {
+impl<I2C: I2c + 'static, D: DelayUs> DataBus for I2CBus<I2C, D> {
     type WriteFuture<'a>
     where
         D: 'a,
@@ -77,7 +60,7 @@ impl<I2C: I2c + 'static, D: Delay> DataBus for I2CBus<I2C, D> {
                     .await;
 
             // TODO: display stopped working w/o this... Maybe we want to pack everything into one chunky transaction
-            self.delay.delay_ms(1).await;
+            self.delay.delay_ms(1).await.unwrap();
 
             Ok(())
         }

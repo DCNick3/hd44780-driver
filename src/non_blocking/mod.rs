@@ -1,8 +1,8 @@
 //use core::fmt::Result;
 //use core::fmt::Write;
 
-use embassy_traits::delay::Delay;
-use embassy_traits::i2c;
+use embedded_hal_async::delay::DelayUs;
+use embedded_hal_async::i2c;
 use embedded_hal::digital::v2::OutputPin;
 
 pub mod bus;
@@ -19,10 +19,11 @@ pub use crate::display_mode;
 
 pub use display_mode::DisplayMode;
 
-pub struct HD44780<B: DataBus> {
+pub struct HD44780<B: DataBus, D: DelayUs> {
     bus: B,
     entry_mode: EntryMode,
     display_mode: DisplayMode,
+    delay: D,
 }
 
 pub use crate::Cursor;
@@ -43,8 +44,8 @@ impl<
         D5: OutputPin + 'static,
         D6: OutputPin + 'static,
         D7: OutputPin + 'static,
-        D: Delay,
-    > HD44780<EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7, D>>
+        D: DelayUs + Clone,
+    > HD44780<EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7, D>, D>
 {
     /// Create an instance of a `HD44780` from 8 data pins, a register select
     /// pin, an enable pin and a struct implementing the delay trait.
@@ -69,11 +70,12 @@ impl<
         d6: D6,
         d7: D7,
         delay: D,
-    ) -> Result<HD44780<EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7, D>>> {
+    ) -> Result<HD44780<EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7, D>, D>> {
         let mut hd = HD44780 {
-            bus: EightBitBus::from_pins(rs, en, d0, d1, d2, d3, d4, d5, d6, d7, delay),
+            bus: EightBitBus::from_pins(rs, en, d0, d1, d2, d3, d4, d5, d6, d7, delay.clone()),
             entry_mode: EntryMode::default(),
             display_mode: DisplayMode::default(),
+            delay: delay,
         };
 
         hd.init_8bit().await?;
@@ -89,8 +91,8 @@ impl<
         D5: OutputPin + 'static,
         D6: OutputPin + 'static,
         D7: OutputPin + 'static,
-        D: Delay,
-    > HD44780<FourBitBus<RS, EN, D4, D5, D6, D7, D>>
+        D: DelayUs + Clone,
+    > HD44780<FourBitBus<RS, EN, D4, D5, D6, D7, D>, D>
 {
     /// Create an instance of a `HD44780` from 4 data pins, a register select
     /// pin, an enable pin and a struct implementing the delay trait.
@@ -119,11 +121,12 @@ impl<
         d6: D6,
         d7: D7,
         delay: D,
-    ) -> Result<HD44780<FourBitBus<RS, EN, D4, D5, D6, D7, D>>> {
+    ) -> Result<HD44780<FourBitBus<RS, EN, D4, D5, D6, D7, D>, D>> {
         let mut hd = HD44780 {
-            bus: FourBitBus::from_pins(rs, en, d4, d5, d6, d7, delay),
+            bus: FourBitBus::from_pins(rs, en, d4, d5, d6, d7, delay.clone()),
             entry_mode: EntryMode::default(),
             display_mode: DisplayMode::default(),
+            delay: delay,
         };
 
         hd.init_4bit().await?;
@@ -132,7 +135,7 @@ impl<
     }
 }
 
-impl<I2C: i2c::I2c + 'static, D: Delay> HD44780<I2CBus<I2C, D>> {
+impl<I2C: i2c::I2c + 'static, D: DelayUs + Clone> HD44780<I2CBus<I2C, D>, D> {
     /// Create an instance of a `HD44780` from an i2c write peripheral,
     /// the `HD44780` I2C address and a struct implementing the delay trait.
     /// - The delay instance is used to sleep between commands to
@@ -146,11 +149,12 @@ impl<I2C: i2c::I2c + 'static, D: Delay> HD44780<I2CBus<I2C, D>> {
         i2c_bus: I2C,
         address: u8,
         delay: D,
-    ) -> Result<HD44780<I2CBus<I2C, D>>> {
+    ) -> Result<HD44780<I2CBus<I2C, D>, D>> {
         let mut hd = HD44780 {
-            bus: I2CBus::new(i2c_bus, address, delay),
+            bus: I2CBus::new(i2c_bus, address, delay.clone()),
             entry_mode: EntryMode::default(),
             display_mode: DisplayMode::default(),
+            delay: delay,
         };
 
         hd.init_4bit().await?;
@@ -159,10 +163,20 @@ impl<I2C: i2c::I2c + 'static, D: Delay> HD44780<I2CBus<I2C, D>> {
     }
 }
 
-impl<B> HD44780<B>
+impl<B, D> HD44780<B, D>
 where
     B: DataBus,
+    D: DelayUs,
 {
+    /// Future that completes after now + millis
+    async fn delay_ms(&mut self, millis: u32) {
+        self.delay.delay_ms(millis).await.unwrap()
+    }
+    /// Future that completes after now + millis
+    async fn delay_us(&mut self, micros: u32) {
+        self.delay.delay_us(micros).await.unwrap()
+    }
+
     /// Unshifts the display and sets the cursor position to 0
     ///
     /// ```rust,ignore
@@ -322,7 +336,7 @@ where
     /// See the documentation on that function for more details about compatibility.
     ///
     /// ```rust,ignore
-    /// lcd.write_char('A', &'a mut Delay)?; // prints 'A'
+    /// lcd.write_char('A')?; // prints 'A'
     /// ```
     pub async fn write_char(&mut self, data: char) -> Result<()> {
         self.write_byte(data as u8).await
@@ -332,53 +346,53 @@ where
         self.bus.write(cmd, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.delay_us(100).await;
         Ok(())
     }
 
     async fn init_4bit(&mut self) -> Result<()> {
         // Wait for the LCD to wakeup if it was off
-        self.bus.delay_ms(15u8 as u64).await;
+        self.delay_ms(15).await;
 
         // Initialize Lcd in 4-bit mode
         self.bus.write(0x33, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_ms(5u8 as u64).await;
+        self.delay_ms(5).await;
 
         // Sets 4-bit operation and enables 5x7 mode for chars
         self.bus.write(0x32, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_ms(5u8 as u64).await;
+        self.delay_ms(5).await;
 
         self.bus.write(0x28, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_ms(5u8 as u64).await;
+        self.delay_ms(5).await;
 
         // Clear Display
         self.bus.write(0x0E, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_ms(5u8 as u64).await;
+        self.delay_ms(5).await;
 
         // Move the cursor to beginning of first line
         self.bus.write(0x01, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_ms(5u8 as u64).await;
+        self.delay_ms(5).await;
 
         // Set entry mode
         self.bus.write(self.entry_mode.as_byte(), false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_ms(5u8 as u64).await;
+        self.delay_ms(5).await;
 
         self.bus.write(0x80, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_ms(5u8 as u64).await;
+        self.delay_ms(5).await;
 
         Ok(())
     }
@@ -386,42 +400,42 @@ where
     // Follow the 8-bit setup procedure as specified in the HD44780 datasheet
     async fn init_8bit(&mut self) -> Result<()> {
         // Wait for the LCD to wakeup if it was off
-        self.bus.delay_ms(15u8 as u64).await;
+        self.delay_ms(15).await;
 
         // Initialize Lcd in 8-bit mode
         self.bus.write(0b0011_0000, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_ms(5u8 as u64).await;
+        self.delay_ms(5).await;
 
         // Sets 8-bit operation and enables 5x7 mode for chars
         self.bus.write(0b0011_1000, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.delay_us(100).await;
 
         self.bus.write(0b0000_1110, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.delay_us(100).await;
 
         // Clear Display
         self.bus.write(0b0000_0001, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.delay_us(100).await;
 
         // Move the cursor to beginning of first line
         self.bus.write(0b000_0111, false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.delay_us(100).await;
 
         // Set entry mode
         self.bus.write(self.entry_mode.as_byte(), false).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.delay_us(100).await;
 
         Ok(())
     }
@@ -431,7 +445,7 @@ where
     /// [write_byte](#method.write_byte) for more details on compatibility.
     ///
     /// ```rust,ignore
-    /// lcd.write_str("Hello, World!", &'a mut Delay)?;
+    /// lcd.write_str("Hello, World!")?;
     /// ```
     pub async fn write_str(&mut self, string: &str) -> Result<()> {
         self.write_bytes(string.as_bytes()).await
@@ -441,7 +455,7 @@ where
     /// [write_byte](#method.write_byte) function for more details about compatibility.
     ///
     /// ```rust,ignore
-    /// lcd.write_bytes(b"Hello, World!", &'a mut Delay)?;
+    /// lcd.write_bytes(b"Hello, World!")?;
     /// ```
     pub async fn write_bytes(&mut self, string: &[u8]) -> Result<()> {
         for &b in string {
@@ -459,16 +473,16 @@ where
     /// More information can be found in the Hitachi datasheets for the HD44780.
     ///
     /// ```rust,ignore
-    /// lcd.write_byte(b'A', &'a mut Delay)?; // prints 'A'
-    /// lcd.write_byte(b'\\', &'a mut Delay)?; // usually prints ¥
-    /// lcd.write_byte(b'~', &'a mut Delay)?; // usually prints 🡢
-    /// lcd.write_byte(b'\x7f', &'a mut Delay)?; // usually prints 🡠
+    /// lcd.write_byte(b'A')?; // prints 'A'
+    /// lcd.write_byte(b'\\')?; // usually prints ¥
+    /// lcd.write_byte(b'~')?; // usually prints 🡢
+    /// lcd.write_byte(b'\x7f')?; // usually prints 🡠
     /// ```
     pub async fn write_byte(&mut self, data: u8) -> Result<()> {
         self.bus.write(data, true).await?;
 
         // Wait for the command to be processed
-        self.bus.delay_us(100 as u64).await;
+        self.delay_us(100).await;
 
         Ok(())
     }

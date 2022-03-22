@@ -1,5 +1,5 @@
 use core::future::Future;
-use embassy_traits::delay::Delay;
+use embedded_hal_async::delay::DelayUs;
 use embedded_hal::digital::v2::OutputPin;
 
 use crate::{
@@ -18,7 +18,7 @@ pub struct EightBitBus<
     D5: OutputPin,
     D6: OutputPin,
     D7: OutputPin,
-    D: Delay,
+    D: DelayUs,
 > {
     rs: RS,
     en: EN,
@@ -44,7 +44,7 @@ impl<
         D5: OutputPin,
         D6: OutputPin,
         D7: OutputPin,
-        D: Delay,
+        D: DelayUs,
     > EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7, D>
 {
     pub fn from_pins(
@@ -135,35 +135,10 @@ impl<
 
         Ok(())
     }
-}
-
-impl<
-        RS: OutputPin + 'static,
-        EN: OutputPin + 'static,
-        D0: OutputPin + 'static,
-        D1: OutputPin + 'static,
-        D2: OutputPin + 'static,
-        D3: OutputPin + 'static,
-        D4: OutputPin + 'static,
-        D5: OutputPin + 'static,
-        D6: OutputPin + 'static,
-        D7: OutputPin + 'static,
-        D: Delay,
-    > Delay for EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7, D>
-{
-    type DelayFuture<'a>
-    where
-        D: 'a,
-    = impl Future<Output = ()> + 'a;
 
     /// Future that completes after now + millis
-    fn delay_ms(&mut self, millis: u64) -> Self::DelayFuture<'_> {
-        self.delay.delay_ms(millis)
-    }
-
-    /// Future that completes after now + micros
-    fn delay_us(&mut self, micros: u64) -> Self::DelayFuture<'_> {
-        self.delay.delay_us(micros)
+    pub async fn delay_ms(&mut self, millis: u32) {
+        self.delay.delay_ms(millis).await.unwrap()
     }
 }
 
@@ -178,7 +153,7 @@ impl<
         D5: OutputPin + 'static,
         D6: OutputPin + 'static,
         D7: OutputPin + 'static,
-        D: Delay,
+        D: DelayUs,
     > DataBus for EightBitBus<RS, EN, D0, D1, D2, D3, D4, D5, D6, D7, D>
 {
     type WriteFuture<'a>
@@ -195,7 +170,7 @@ impl<
             }
             self.set_bus_bits(byte)?;
             self.en.set_high().map_err(|_| Error)?;
-            self.delay.delay_ms(2u8 as u64).await;
+            self.delay.delay_ms(2).await.unwrap();
             self.en.set_low().map_err(|_| Error)?;
             if data {
                 self.rs.set_low().map_err(|_| Error)?;
