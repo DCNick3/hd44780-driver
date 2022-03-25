@@ -129,10 +129,9 @@ impl<
         D: DelayUs,
     > DataBus for FourBitBus<RS, EN, D4, D5, D6, D7, D>
 {
-    type WriteFuture<'a>
+    type WriteFuture<'a> = impl Future<Output = Result<()>> + 'a
     where
-        D: 'a,
-    = impl Future<Output = Result<()>> + 'a;
+        D: 'a;
 
     fn write<'a>(&'a mut self, byte: u8, data: bool) -> Self::WriteFuture<'a> {
         async move {

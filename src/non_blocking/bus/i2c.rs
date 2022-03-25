@@ -27,10 +27,9 @@ impl<I2C: I2c, D: DelayUs> I2CBus<I2C, D> {
 }
 
 impl<I2C: I2c + 'static, D: DelayUs> DataBus for I2CBus<I2C, D> {
-    type WriteFuture<'a>
+    type WriteFuture<'a> = impl Future<Output = Result<()>> + 'a
     where
-        D: 'a,
-    = impl Future<Output = Result<()>> + 'a;
+        D: 'a;
 
     fn write<'a>(&'a mut self, byte: u8, data: bool) -> Self::WriteFuture<'a> {
         async move {
