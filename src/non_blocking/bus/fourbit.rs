@@ -1,6 +1,6 @@
 use core::future::Future;
-use embedded_hal_async::delay::DelayUs;
 use embedded_hal::digital::v2::OutputPin;
+use embedded_hal_async::delay::DelayUs;
 
 use crate::error::{Error, Result};
 use crate::non_blocking::bus::DataBus;

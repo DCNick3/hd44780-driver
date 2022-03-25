@@ -38,7 +38,7 @@ impl<I2C: I2c + 'static, D: DelayUs> DataBus for I2CBus<I2C, D> {
                 false => 0u8,
                 true => REGISTER_SELECT,
             };
-            
+
             let write_chain = [
                 // using the same hack as arduino lib (https://github.com/duinoWitchery/hd44780/):
                 // > Cheat here by raising E at the same time as setting control lines
@@ -46,18 +46,13 @@ impl<I2C: I2c + 'static, D: DelayUs> DataBus for I2CBus<I2C, D> {
                 // also we send both nibbles in one i2c transaction (it's nice =))
                 // I think using DMA we can actually offload even more work off cpu sacrificing memory usage
                 // but no DMA yet + will need to change the library structure... Uncool
-                rs | BACKLIGHT | (byte & 0xF0)        | ENABLE, 
+                rs | BACKLIGHT | (byte & 0xF0) | ENABLE,
                 rs | BACKLIGHT | (byte & 0xF0),
-
-                rs | BACKLIGHT | ((byte & 0x0F) << 4) | ENABLE, 
+                rs | BACKLIGHT | ((byte & 0x0F) << 4) | ENABLE,
                 rs | BACKLIGHT | ((byte & 0x0F) << 4),
             ];
 
-
-            let _ = self
-                .i2c_bus
-                    .write(self.address, &write_chain)
-                    .await;
+            let _ = self.i2c_bus.write(self.address, &write_chain).await;
 
             // TODO: display stopped working w/o this... Maybe we want to pack everything into one chunky transaction
             self.delay.delay_ms(1).await.unwrap();

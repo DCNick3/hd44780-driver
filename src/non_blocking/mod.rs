@@ -1,9 +1,9 @@
 //use core::fmt::Result;
 //use core::fmt::Write;
 
+use embedded_hal::digital::v2::OutputPin;
 use embedded_hal_async::delay::DelayUs;
 use embedded_hal_async::i2c;
-use embedded_hal::digital::v2::OutputPin;
 
 pub mod bus;
 use bus::{DataBus, EightBitBus, FourBitBus};
